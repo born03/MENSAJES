@@ -3,158 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prompter Fijo con Alerta</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <title>Prompter Realtime</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
     <style>
-        body { background: #000; color: white; font-family: 'Helvetica', sans-serif; margin: 0; padding: 0; overflow: hidden; }
+        body { background: #000; color: white; font-family: sans-serif; margin: 0; text-align: center; }
+        .box { background: #222; padding: 20px; border-radius: 10px; display: inline-block; margin-top: 50px; border: 1px solid #444; }
+        input, textarea { width: 90%; padding: 10px; margin: 10px 0; font-size: 18px; border-radius: 5px; }
+        button { padding: 15px 25px; font-size: 18px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; }
         
-        /* SETUP */
-        #bloqueo-audio { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: #111; z-index: 1000; display: flex; align-items: center; justify-content: center; 
-        }
-        .setup-box { background: #222; padding: 30px; border-radius: 15px; text-align: center; border: 1px solid #444; }
-        input { width: 80%; padding: 12px; margin-bottom: 20px; font-size: 20px; border-radius: 5px; text-align: center; }
+        #panel-control, #panel-pantalla { display: none; padding: 20px; }
+        #texto-prompter { font-size: 70px; font-weight: bold; height: 90vh; display: flex; align-items: center; justify-content: center; padding: 20px; line-height: 1.2; }
         
-        .btn { padding: 15px 25px; font-size: 18px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; }
-        .btn-activar { background: #ff4757; color: white; }
-        .btn-control { background: #1e90ff; color: white; margin-left: 10px; }
-        .btn-send { background: #2ed573; color: white; width: 100%; margin-top: 10px; height: 50px; }
-
-        /* PANEL CONTROL (PC) */
-        #panel-control { display: none; padding: 20px; max-width: 600px; margin: 0 auto; }
-        textarea { 
-            width: 100%; height: 150px; font-size: 20px; background: #222; color: #fff; 
-            border: 2px solid #444; padding: 15px; border-radius: 10px; box-sizing: border-box;
-        }
-        
-        /* HISTORIAL */
-        #historial { 
-            margin-top: 20px; background: #1a1a1a; border-radius: 10px; 
-            padding: 10px; border: 1px solid #333; height: 250px; overflow-y: auto;
-        }
-        .msg-item { padding: 8px; border-bottom: 1px solid #333; font-size: 13px; display: flex; gap: 10px; }
-        .msg-time { color: #888; font-family: monospace; }
-
-        /* PANTALLA IPAD (TEXTO FIJO Y GRANDE) */
-        #panel-pantalla { 
-            display: none; height: 100vh; width: 100vw;
-            display: flex; align-items: center; justify-content: center;
-        }
-        #texto-prompter { 
-            font-size: 80px; /* Tamaño muy grande para iPad */
-            font-weight: bold; 
-            text-align: center; 
-            width: 90%;
-            line-height: 1.2;
-            word-wrap: break-word;
-        }
-        .status { color: #2ed573; text-align: center; padding: 10px; font-size: 12px; }
+        .status { padding: 10px; color: #ff4757; font-weight: bold; }
+        .online { color: #2ed573; }
+        #historial { margin-top: 20px; text-align: left; background: #111; padding: 10px; height: 150px; overflow-y: auto; font-size: 12px; }
     </style>
 </head>
 <body>
 
-    <div id="bloqueo-audio">
-        <div class="setup-box">
-            <h2>Configuración</h2>
-            <input type="text" id="room-id" placeholder="Código de Sala">
+    <div id="setup">
+        <div class="box">
+            <h2>Paso 1: Código de Sala</h2>
+            <input type="text" id="room-id" placeholder="Ejemplo: sala123">
             <br>
-            <button class="btn btn-activar" onclick="iniciarComo('pantalla')">IPAD: RECIBIR</button>
-            <button class="btn btn-control" onclick="iniciarComo('control')">PC: CONTROL</button>
+            <button style="background: #28a745; color:white" onclick="iniciar('pantalla')">SOY EL IPAD</button>
+            <button style="background: #007bff; color:white" onclick="iniciar('control')">SOY LA PC</button>
         </div>
     </div>
 
     <div id="panel-control">
-        <div class="status" id="status-pc">🔴 Desconectado</div>
-        <textarea id="input-texto" placeholder="Escribe el mensaje y presiona Enter..."></textarea>
-        <button class="btn btn-send" onclick="enviarTexto()">ENVIAR AHORA</button>
-
-        <div id="historial">
-            <div id="lista-mensajes"></div>
-        </div>
+        <div id="status-pc" class="status">🔴 Desconectado del iPad</div>
+        <textarea id="input-texto" placeholder="Escribe aquí y pulsa ENTER..."></textarea>
+        <br>
+        <button style="background: #2ed573; color:white; width:90%" onclick="enviar()">ENVIAR (O pulsa Enter)</button>
+        <div id="historial"></div>
     </div>
 
-    <div id="panel-pantalla" style="display:none;">
-        <div id="texto-prompter">...</div>
+    <div id="panel-pantalla">
+        <div id="status-ipad" class="status">Esperando conexión...</div>
+        <div id="texto-prompter">EL TEXTO APARECERÁ AQUÍ</div>
     </div>
 
     <script>
         let peer, conn, audioCtx;
 
-        document.getElementById('input-texto').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                enviarTexto();
+        // --- FUNCIÓN PARA EL ENTER ---
+        document.getElementById('input-texto').onkeypress = function(e) {
+            if (e.keyCode === 13 && !e.shiftKey) {
+                e.preventDefault(); // Evita el salto de línea
+                enviar();
             }
-        });
+        };
 
-        function iniciarComo(rol) {
+        function iniciar(rol) {
             const id = document.getElementById('room-id').value;
-            if (!id) return alert("Pon un código");
+            if (!id) return alert("Escribe un código primero");
+
+            // Desbloquear audio
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            document.getElementById('bloqueo-audio').style.display = 'none';
+            document.getElementById('setup').style.display = 'none';
 
             if (rol === 'pantalla') {
-                document.getElementById('panel-pantalla').style.display = 'flex';
-                peer = new Peer('p-room-' + id);
+                document.getElementById('panel-pantalla').style.display = 'block';
+                peer = new Peer('room-' + id);
+                
+                peer.on('open', () => {
+                    document.getElementById('status-ipad').innerText = "✅ iPad listo. Código: " + id;
+                });
+
                 peer.on('connection', (c) => {
                     conn = c;
-                    conn.on('data', (data) => actualizarPantalla(data));
+                    document.getElementById('status-ipad').innerHTML = "<span class='online'>✅ PC CONECTADA</span>";
+                    conn.on('data', (data) => {
+                        recibirEnIpad(data);
+                    });
                 });
             } else {
                 document.getElementById('panel-control').style.display = 'block';
                 peer = new Peer();
-                peer.on('open', () => {
-                    conn = peer.connect('p-room-' + id);
-                    conn.on('open', () => document.getElementById('status-pc').innerText = "✅ CONECTADO");
-                });
+                
+                // Intentar conectar
+                setTimeout(() => {
+                    conn = peer.connect('room-' + id);
+                    conn.on('open', () => {
+                        document.getElementById('status-pc').innerHTML = "<span class='online'>✅ CONECTADO AL IPAD</span>";
+                    });
+                }, 1000);
             }
         }
 
-        function enviarTexto() {
-            const area = document.getElementById('input-texto');
-            const texto = area.value.trim();
-            if (texto && conn && conn.open) {
-                conn.send(texto);
-                agregarAlHistorial(texto);
-                area.value = "";
+        function enviar() {
+            const val = document.getElementById('input-texto').value.trim();
+            if (val && conn && conn.open) {
+                conn.send(val);
+                // Agregar al historial local
+                const h = document.getElementById('historial');
+                h.innerHTML = `<div>[${new Date().toLocaleTimeString()}] ${val.substring(0,30)}...</div>` + h.innerHTML;
+                document.getElementById('input-texto').value = "";
+            } else {
+                alert("No hay conexión. ¿El iPad está en modo pantalla?");
             }
         }
 
-        function agregarAlHistorial(msg) {
-            const lista = document.getElementById('lista-mensajes');
-            const item = document.createElement('div');
-            item.className = 'msg-item';
-            const hora = new Date().toLocaleTimeString();
-            item.innerHTML = `<span class="msg-time">[${hora}]</span> <span>${msg.substring(0, 40)}...</span>`;
-            lista.prepend(item);
-        }
-
-        // SONIDO DOBLE (Bi-Bip)
-        function sonarAlerta() {
-            if (!audioCtx) return;
-            const t = audioCtx.currentTime;
-            
-            function pitar(delay, freq) {
+        function recibirEnIpad(texto) {
+            // Sonido largo y notorio
+            if (audioCtx) {
                 const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
-                osc.connect(g);
-                g.connect(audioCtx.destination);
-                osc.frequency.setValueAtTime(freq, t + delay);
-                g.gain.setValueAtTime(0.3, t + delay);
-                g.gain.exponentialRampToValueAtTime(0.01, t + delay + 0.3);
-                osc.start(t + delay);
-                osc.stop(t + delay + 0.3);
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                osc.type = 'square'; // Sonido más fuerte tipo alarma
+                osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.5);
+                
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.8);
+                
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.8);
             }
-
-            pitar(0, 880);   // Primer pitido
-            pitar(0.4, 1000); // Segundo pitido un poco más agudo
-        }
-
-        function actualizarPantalla(texto) {
-            sonarAlerta();
-            const display = document.getElementById('texto-prompter');
-            display.innerText = texto; // El texto aparece y se queda fijo
+            
+            document.getElementById('texto-prompter').innerText = texto;
         }
     </script>
 </body>
