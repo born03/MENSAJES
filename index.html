@@ -3,110 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prompter Sync v2</title>
+    <title>Teleprompter Pro Directo</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; text-align: center; margin: 0; }
+        body { background: #111; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
+        .setup-box { background: #222; padding: 20px; border-radius: 15px; max-width: 400px; margin: 50px auto; border: 1px solid #444; }
+        input { width: 80%; padding: 10px; margin: 10px 0; font-size: 18px; border-radius: 5px; border: none; }
         
-        /* SEMÁFORO DE CONEXIÓN */
-        #status-bar { 
-            padding: 10px; background: #222; display: flex; 
-            align-items: center; justify-content: center; gap: 10px; 
-        }
-        #light { width: 15px; height: 15px; background: red; border-radius: 50%; box-shadow: 0 0 10px red; }
-        
-        #admin { padding: 20px; }
-        textarea { width: 90%; height: 150px; font-size: 18px; margin: 15px 0; border-radius: 10px; }
-        #display { font-size: 55px; font-weight: bold; padding-top: 40vh; display: none; line-height: 1.4; }
-        
-        button { 
-            padding: 15px 30px; font-size: 20px; font-weight: bold;
-            cursor: pointer; background: #28a745; color: white; border: none; border-radius: 8px; 
-        }
-        button:disabled { background: #555; cursor: not-allowed; }
+        .btn { padding: 15px 25px; font-size: 18px; cursor: pointer; border: none; border-radius: 8px; margin: 5px; font-weight: bold; }
+        .btn-control { background: #007bff; color: white; }
+        .btn-pantalla { background: #28a745; color: white; }
+        .btn-send { background: #ffc107; color: black; width: 90%; }
+
+        #panel-control, #panel-pantalla { display: none; }
+        #texto-prompter { font-size: 50px; font-weight: bold; line-height: 1.5; padding-top: 40vh; text-align: center; }
+        textarea { width: 90%; height: 200px; font-size: 18px; margin-top: 10px; }
+        .status { color: #0f0; font-size: 14px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
-    <div id="status-bar">
-        <div id="light"></div>
-        <span id="status-text">Desconectado</span>
+    <div id="setup" class="setup-box">
+        <h2>Configuración</h2>
+        <input type="text" id="room-id" placeholder="Código de sala (ej: 555)">
+        <p>Elige la función de este dispositivo:</p>
+        <button class="btn btn-pantalla" onclick="iniciarComo('pantalla')">SER PANTALLA (iPad)</button>
+        <button class="btn btn-control" onclick="iniciarComo('control')">SER CONTROL (PC)</button>
     </div>
 
-    <div id="admin">
-        <textarea id="textIn" placeholder="Escribe aquí tu guion..."></textarea><br>
-        <button id="btnEnviar" onclick="enviar()" disabled>ENVIAR AL IPAD</button>
+    <div id="panel-control">
+        <div class="status" id="status-pc">Estado: Conectando...</div>
+        <textarea id="input-texto" placeholder="Pega tu texto aquí..."></textarea><br>
+        <button class="btn btn-send" onclick="enviarTexto()">ENVIAR Y EMPEZAR</button>
     </div>
 
-    <div id="display"></div>
+    <div id="panel-pantalla">
+        <div id="texto-prompter">Esperando texto del control...</div>
+    </div>
 
     <script>
-        const SALA_ID = "mi-sala-privada-2026"; // ASEGÚRATE QUE SEA IGUAL EN AMBOS
-        const light = document.getElementById('light');
-        const statusText = document.getElementById('status-text');
-        const btn = document.getElementById('btnEnviar');
-        const display = document.getElementById('display');
-        
-        const esIpad = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        const peer = esIpad ? new Peer(SALA_ID) : new Peer();
-        let conn;
+        let peer, conn;
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-        // Cambiar color del semáforo
-        function conectado() {
-            light.style.background = "#0f0";
-            light.style.boxShadow = "0 0 15px #0f0";
-            statusText.innerText = "¡CONECTADO!";
-            btn.disabled = false;
+        function iniciarComo(rol) {
+            const id = document.getElementById('room-id').value;
+            if (!id) return alert("Pon un número o nombre de sala");
+
+            document.getElementById('setup').style.display = 'none';
+
+            if (rol === 'pantalla') {
+                document.getElementById('panel-pantalla').style.display = 'block';
+                // El iPad se registra con el ID de la sala
+                peer = new Peer('prompter-' + id);
+                peer.on('open', () => console.log("iPad listo"));
+                peer.on('connection', (c) => {
+                    conn = c;
+                    conn.on('data', (data) => ejecutarPrompter(data));
+                });
+            } else {
+                document.getElementById('panel-control').style.display = 'block';
+                peer = new Peer(); // La PC tiene ID aleatorio
+                peer.on('open', () => {
+                    // Intenta conectar al iPad
+                    conn = peer.connect('prompter-' + id);
+                    conn.on('open', () => {
+                        document.getElementById('status-pc').innerText = "ESTADO: ¡CONECTADO AL IPAD!";
+                    });
+                });
+            }
         }
 
-        peer.on('open', () => {
-            statusText.innerText = esIpad ? "IPAD: Esperando PC..." : "PC: Buscando iPad...";
-            if (!esIpad) {
-                const intentarConectar = () => {
-                    conn = peer.connect(SALA_ID);
-                    conn.on('open', () => conectado());
-                    // Si falla, reintenta cada 3 segundos
-                    conn.on('error', () => setTimeout(intentarConectar, 3000));
-                };
-                intentarConectar();
-            }
-        });
-
-        // El iPad detecta cuando la PC se conecta a él
-        peer.on('connection', (c) => {
-            conn = c;
-            conectado();
-            conn.on('data', (texto) => sonarYMostrar(texto));
-        });
-
-        function enviar() {
+        function enviarTexto() {
+            const texto = document.getElementById('input-texto').value;
             if (conn && conn.open) {
-                conn.send(document.getElementById('textIn').value);
+                conn.send(texto);
+            } else {
+                alert("No hay conexión. Asegúrate que el iPad tenga el mismo código y esté en modo PANTALLA.");
             }
         }
 
-        function sonarYMostrar(texto) {
-            // Pitido de alerta
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function ejecutarPrompter(texto) {
+            // Pitido de aviso
             const osc = audioCtx.createOscillator();
             osc.connect(audioCtx.destination);
             osc.start();
-            osc.stop(audioCtx.currentTime + 0.6);
+            osc.stop(audioCtx.currentTime + 0.5);
 
-            document.getElementById('admin').style.display = 'none';
-            display.style.display = 'block';
-            display.innerText = "3... 2... 1...";
+            const display = document.getElementById('texto-prompter');
+            display.innerText = "¡ATENCIÓN!";
             
             setTimeout(() => {
                 display.innerText = texto;
                 let pos = 0;
                 function scroll() {
-                    pos += 1.8; // Velocidad
+                    pos += 2;
                     window.scrollTo(0, pos);
                     requestAnimationFrame(scroll);
                 }
                 scroll();
-            }, 2000);
+            }, 1500);
         }
     </script>
 </body>
