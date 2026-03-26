@@ -3,87 +3,110 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prompter Automático</title>
+    <title>Prompter Sync v2</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { background: #000; color: #fff; font-family: Arial; text-align: center; margin: 0; overflow-x: hidden; }
-        #admin { background: #222; padding: 20px; }
-        textarea { width: 90%; height: 100px; font-size: 16px; margin: 10px 0; }
-        #display { font-size: 50px; font-weight: bold; padding-top: 50vh; display: none; line-height: 1.5; }
-        button { padding: 15px; font-size: 18px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; }
-        .status { font-size: 12px; color: #0f0; margin-top: 5px; }
+        body { background: #000; color: #fff; font-family: sans-serif; text-align: center; margin: 0; }
+        
+        /* SEMÁFORO DE CONEXIÓN */
+        #status-bar { 
+            padding: 10px; background: #222; display: flex; 
+            align-items: center; justify-content: center; gap: 10px; 
+        }
+        #light { width: 15px; height: 15px; background: red; border-radius: 50%; box-shadow: 0 0 10px red; }
+        
+        #admin { padding: 20px; }
+        textarea { width: 90%; height: 150px; font-size: 18px; margin: 15px 0; border-radius: 10px; }
+        #display { font-size: 55px; font-weight: bold; padding-top: 40vh; display: none; line-height: 1.4; }
+        
+        button { 
+            padding: 15px 30px; font-size: 20px; font-weight: bold;
+            cursor: pointer; background: #28a745; color: white; border: none; border-radius: 8px; 
+        }
+        button:disabled { background: #555; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
+    <div id="status-bar">
+        <div id="light"></div>
+        <span id="status-text">Desconectado</span>
+    </div>
+
     <div id="admin">
-        <textarea id="textIn" placeholder="Escribe el guion aquí..."></textarea><br>
-        <button onclick="enviar()">ENVIAR AL IPAD</button>
-        <div id="status" class="status">Estado: Iniciando...</div>
+        <textarea id="textIn" placeholder="Escribe aquí tu guion..."></textarea><br>
+        <button id="btnEnviar" onclick="enviar()" disabled>ENVIAR AL IPAD</button>
     </div>
 
     <div id="display"></div>
 
     <script>
-        // CONFIGURACIÓN AUTOMÁTICA
-        const SALA_ID = "mi-prompter-unico-123"; // Cambia este número por uno tuyo
+        const SALA_ID = "mi-sala-privada-2026"; // ASEGÚRATE QUE SEA IGUAL EN AMBOS
+        const light = document.getElementById('light');
+        const statusText = document.getElementById('status-text');
+        const btn = document.getElementById('btnEnviar');
         const display = document.getElementById('display');
-        const status = document.getElementById('status');
         
-        // Identificar si es móvil/tablet o PC para asignar roles
         const esIpad = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         const peer = esIpad ? new Peer(SALA_ID) : new Peer();
         let conn;
 
-        // LÓGICA RECEPTOR (IPAD)
-        peer.on('open', (id) => {
-            status.innerText = esIpad ? "IPAD LISTO: Esperando señal..." : "PC CONECTADA";
+        // Cambiar color del semáforo
+        function conectado() {
+            light.style.background = "#0f0";
+            light.style.boxShadow = "0 0 15px #0f0";
+            statusText.innerText = "¡CONECTADO!";
+            btn.disabled = false;
+        }
+
+        peer.on('open', () => {
+            statusText.innerText = esIpad ? "IPAD: Esperando PC..." : "PC: Buscando iPad...";
             if (!esIpad) {
-                // La PC intenta conectar al iPad automáticamente
-                setTimeout(() => {
+                const intentarConectar = () => {
                     conn = peer.connect(SALA_ID);
-                    conn.on('open', () => status.innerText = "SINCRONIZADO CON IPAD");
-                }, 2000);
+                    conn.on('open', () => conectado());
+                    // Si falla, reintenta cada 3 segundos
+                    conn.on('error', () => setTimeout(intentarConectar, 3000));
+                };
+                intentarConectar();
             }
         });
 
+        // El iPad detecta cuando la PC se conecta a él
         peer.on('connection', (c) => {
             conn = c;
-            document.getElementById('admin').style.display = 'none';
-            display.style.display = 'block';
+            conectado();
             conn.on('data', (texto) => sonarYMostrar(texto));
         });
 
-        // LÓGICA EMISOR (PC)
         function enviar() {
-            const txt = document.getElementById('textIn').value;
             if (conn && conn.open) {
-                conn.send(txt);
-            } else {
-                alert("Aún no hay conexión con el iPad. Recarga la página.");
+                conn.send(document.getElementById('textIn').value);
             }
         }
 
-        // SONIDO Y MOVIMIENTO
         function sonarYMostrar(texto) {
+            // Pitido de alerta
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const osc = audioCtx.createOscillator();
             osc.connect(audioCtx.destination);
             osc.start();
-            osc.stop(audioCtx.currentTime + 0.5); // Pitido medio segundo
+            osc.stop(audioCtx.currentTime + 0.6);
 
-            display.innerText = "¡PREPARADO!";
+            document.getElementById('admin').style.display = 'none';
+            display.style.display = 'block';
+            display.innerText = "3... 2... 1...";
             
             setTimeout(() => {
                 display.innerText = texto;
                 let pos = 0;
                 function scroll() {
-                    pos += 1.5; // Velocidad de bajada
+                    pos += 1.8; // Velocidad
                     window.scrollTo(0, pos);
                     requestAnimationFrame(scroll);
                 }
                 scroll();
-            }, 2000); // Empieza 2 segundos después del pitido
+            }, 2000);
         }
     </script>
 </body>
