@@ -3,71 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Teleprompter Pro Directo</title>
+    <title>Prompter Profesional Sync</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { background: #111; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
-        .setup-box { background: #222; padding: 20px; border-radius: 15px; max-width: 400px; margin: 50px auto; border: 1px solid #444; }
-        input { width: 80%; padding: 10px; margin: 10px 0; font-size: 18px; border-radius: 5px; border: none; }
+        body { background: #000; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 0; }
         
-        .btn { padding: 15px 25px; font-size: 18px; cursor: pointer; border: none; border-radius: 8px; margin: 5px; font-weight: bold; }
-        .btn-control { background: #007bff; color: white; }
-        .btn-pantalla { background: #28a745; color: white; }
-        .btn-send { background: #ffc107; color: black; width: 90%; }
+        /* Pantalla de inicio para desbloquear audio */
+        #bloqueo-audio { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: #111; z-index: 1000; display: flex; flex-direction: column; 
+            align-items: center; justify-content: center; 
+        }
 
-        #panel-control, #panel-pantalla { display: none; }
-        #texto-prompter { font-size: 50px; font-weight: bold; line-height: 1.5; padding-top: 40vh; text-align: center; }
-        textarea { width: 90%; height: 200px; font-size: 18px; margin-top: 10px; }
-        .status { color: #0f0; font-size: 14px; margin-bottom: 10px; }
+        .setup-box { background: #222; padding: 30px; border-radius: 15px; border: 1px solid #444; }
+        input { width: 80%; padding: 12px; margin: 15px 0; font-size: 20px; border-radius: 5px; text-align: center; }
+        
+        .btn { padding: 20px 40px; font-size: 22px; cursor: pointer; border: none; border-radius: 10px; font-weight: bold; transition: 0.3s; }
+        .btn-activar { background: #ff4757; color: white; box-shadow: 0 0 20px rgba(255, 71, 87, 0.4); }
+        .btn-control { background: #1e90ff; color: white; margin-top: 20px; }
+        .btn-send { background: #2ed573; color: white; width: 90%; margin-top: 10px; }
+
+        #panel-control, #panel-pantalla { display: none; padding: 20px; }
+        #texto-prompter { font-size: 55px; font-weight: bold; line-height: 1.5; padding-top: 45vh; }
+        textarea { width: 90%; height: 250px; font-size: 18px; background: #222; color: #fff; border: 1px solid #444; padding: 10px; }
+        .status { color: #2ed573; margin-bottom: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <div id="setup" class="setup-box">
-        <h2>Configuración</h2>
-        <input type="text" id="room-id" placeholder="Código de sala (ej: 555)">
-        <p>Elige la función de este dispositivo:</p>
-        <button class="btn btn-pantalla" onclick="iniciarComo('pantalla')">SER PANTALLA (iPad)</button>
-        <button class="btn btn-control" onclick="iniciarComo('control')">SER CONTROL (PC)</button>
+    <!-- PASO 1: DESBLOQUEO DE AUDIO Y ROL -->
+    <div id="bloqueo-audio">
+        <div class="setup-box">
+            <h2 id="titulo">Configura tu Sesión</h2>
+            <input type="text" id="room-id" placeholder="Código de sala (ej: 777)">
+            <br>
+            <button class="btn btn-activar" onclick="iniciarComo('pantalla')">IPAD: ACTIVAR SONIDO Y PANTALLA</button>
+            <br>
+            <button class="btn btn-control" onclick="iniciarComo('control')">PC: MODO CONTROL</button>
+        </div>
     </div>
 
+    <!-- PANEL CONTROL (PC) -->
     <div id="panel-control">
-        <div class="status" id="status-pc">Estado: Conectando...</div>
-        <textarea id="input-texto" placeholder="Pega tu texto aquí..."></textarea><br>
-        <button class="btn btn-send" onclick="enviarTexto()">ENVIAR Y EMPEZAR</button>
+        <div class="status" id="status-pc">Buscando iPad...</div>
+        <textarea id="input-texto" placeholder="Pega tu guion aquí..."></textarea><br>
+        <button class="btn btn-send" onclick="enviarTexto()">ENVIAR A PANTALLA</button>
     </div>
 
+    <!-- PANEL PANTALLA (IPAD) -->
     <div id="panel-pantalla">
-        <div id="texto-prompter">Esperando texto del control...</div>
+        <div id="texto-prompter">LISTO. ESPERANDO GUION...</div>
     </div>
 
     <script>
         let peer, conn;
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let audioCtx;
 
         function iniciarComo(rol) {
             const id = document.getElementById('room-id').value;
-            if (!id) return alert("Pon un número o nombre de sala");
+            if (!id) return alert("Por favor, ingresa un código de sala.");
 
-            document.getElementById('setup').style.display = 'none';
+            // Iniciar AudioContext tras el clic (Requisito de iOS)
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Ocultar pantalla de inicio
+            document.getElementById('bloqueo-audio').style.display = 'none';
 
             if (rol === 'pantalla') {
                 document.getElementById('panel-pantalla').style.display = 'block';
-                // El iPad se registra con el ID de la sala
-                peer = new Peer('prompter-' + id);
-                peer.on('open', () => console.log("iPad listo"));
+                peer = new Peer('promp-room-' + id);
+                
                 peer.on('connection', (c) => {
                     conn = c;
                     conn.on('data', (data) => ejecutarPrompter(data));
                 });
             } else {
                 document.getElementById('panel-control').style.display = 'block';
-                peer = new Peer(); // La PC tiene ID aleatorio
+                peer = new Peer();
                 peer.on('open', () => {
-                    // Intenta conectar al iPad
-                    conn = peer.connect('prompter-' + id);
+                    conn = peer.connect('promp-room-' + id);
                     conn.on('open', () => {
-                        document.getElementById('status-pc').innerText = "ESTADO: ¡CONECTADO AL IPAD!";
+                        document.getElementById('status-pc').innerText = "✅ CONECTADO AL IPAD";
                     });
                 });
             }
@@ -78,30 +94,42 @@
             if (conn && conn.open) {
                 conn.send(texto);
             } else {
-                alert("No hay conexión. Asegúrate que el iPad tenga el mismo código y esté en modo PANTALLA.");
+                alert("Error de conexión. Asegúrate que el iPad esté listo.");
             }
         }
 
-        function ejecutarPrompter(texto) {
-            // Pitido de aviso
+        function sonarAlerta() {
+            if (!audioCtx) return;
             const osc = audioCtx.createOscillator();
-            osc.connect(audioCtx.destination);
+            const gain = audioCtx.createGain();
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime); // Nota La
+            gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
+            
             osc.start();
-            osc.stop(audioCtx.currentTime + 0.5);
+            osc.stop(audioCtx.currentTime + 0.8);
+        }
 
+        function ejecutarPrompter(texto) {
+            sonarAlerta();
             const display = document.getElementById('texto-prompter');
-            display.innerText = "¡ATENCIÓN!";
+            display.innerText = "¡RECIBIDO! EMPEZAMOS...";
             
             setTimeout(() => {
                 display.innerText = texto;
                 let pos = 0;
                 function scroll() {
-                    pos += 2;
+                    pos += 1.8; // Velocidad de lectura
                     window.scrollTo(0, pos);
                     requestAnimationFrame(scroll);
                 }
                 scroll();
-            }, 1500);
+            }, 2000);
         }
     </script>
 </body>
